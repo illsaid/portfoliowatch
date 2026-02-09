@@ -29,6 +29,16 @@ export function PolicyTab() {
         body: JSON.stringify({ yaml_text: yamlText }),
       });
 
+      if (res.status === 401) {
+        toast({
+          title: 'Authentication failed',
+          description: 'Please unlock admin access above',
+          variant: 'destructive'
+        });
+        setSaving(false);
+        return;
+      }
+
       const data = await res.json();
 
       if (!res.ok) {

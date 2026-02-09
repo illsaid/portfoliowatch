@@ -12,6 +12,12 @@ export function setAdminSecret(secret: string) {
   }
 }
 
+export function clearAdminSecret() {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('pw_admin_secret');
+  }
+}
+
 export function adminHeaders(): Record<string, string> {
   return {
     'Content-Type': 'application/json',

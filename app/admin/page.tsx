@@ -9,6 +9,7 @@ import { TrialsTab } from './trials-tab';
 import { NotificationsTab } from './notifications-tab';
 import { PollRunsTab } from './poll-runs-tab';
 import { DiagnosticsTab } from './diagnostics-tab';
+import { AdminAuthPanel } from './admin-auth-panel';
 
 export default function AdminPage() {
   return (
@@ -17,6 +18,8 @@ export default function AdminPage() {
         <Settings className="h-5 w-5 text-neutral-400" />
         <h1 className="text-lg font-semibold text-neutral-900">Admin Panel</h1>
       </div>
+
+      <AdminAuthPanel />
 
       <Tabs defaultValue="thermostats" className="w-full">
         <TabsList className="flex flex-wrap">

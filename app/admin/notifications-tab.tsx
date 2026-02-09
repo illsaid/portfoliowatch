@@ -36,7 +36,7 @@ export function NotificationsTab() {
   async function save() {
     setSaving(true);
     try {
-      await fetch('/api/admin/notifications', {
+      const res = await fetch('/api/admin/notifications', {
         method: 'PUT',
         headers: adminHeaders(),
         body: JSON.stringify({
@@ -47,6 +47,21 @@ export function NotificationsTab() {
           quiet_push_enabled: quietPush,
         }),
       });
+
+      if (res.status === 401) {
+        toast({
+          title: 'Authentication failed',
+          description: 'Please unlock admin access above',
+          variant: 'destructive'
+        });
+        setSaving(false);
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error('Request failed');
+      }
+
       toast({ title: 'Notification settings saved' });
     } catch {
       toast({ title: 'Failed to save', variant: 'destructive' });

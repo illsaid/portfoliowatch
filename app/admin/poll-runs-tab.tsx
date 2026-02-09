@@ -49,6 +49,17 @@ export function PollRunsTab() {
         method: 'POST',
         headers: adminHeaders(),
       });
+
+      if (res.status === 401) {
+        toast({
+          title: 'Authentication failed',
+          description: 'Please unlock admin access above',
+          variant: 'destructive'
+        });
+        setPolling(false);
+        return;
+      }
+
       const data = await res.json();
       setPollResult(JSON.stringify(data, null, 2));
       if (res.ok) {

@@ -40,11 +40,25 @@ export function ThermostatsTab() {
 
     try {
       for (const s of settings) {
-        await fetch('/api/admin/settings', {
+        const res = await fetch('/api/admin/settings', {
           method: 'PUT',
           headers: adminHeaders(),
           body: JSON.stringify(s),
         });
+
+        if (res.status === 401) {
+          toast({
+            title: 'Authentication failed',
+            description: 'Please unlock admin access above',
+            variant: 'destructive'
+          });
+          setSaving(false);
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error('Request failed');
+        }
       }
       toast({ title: 'Settings saved' });
     } catch {

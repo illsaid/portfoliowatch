@@ -45,6 +45,17 @@ export function TrialsTab() {
         headers: adminHeaders(),
         body: JSON.stringify({ ticker, nct_id: nctId, label: label || null }),
       });
+
+      if (res.status === 401) {
+        toast({
+          title: 'Authentication failed',
+          description: 'Please unlock admin access above',
+          variant: 'destructive'
+        });
+        setAdding(false);
+        return;
+      }
+
       if (!res.ok) {
         const data = await res.json();
         toast({ title: data.error || 'Failed to add mapping', variant: 'destructive' });
@@ -63,10 +74,24 @@ export function TrialsTab() {
 
   async function remove(id: string, nct: string) {
     try {
-      await fetch(`/api/admin/trials?id=${id}`, {
+      const res = await fetch(`/api/admin/trials?id=${id}`, {
         method: 'DELETE',
         headers: adminHeaders(),
       });
+
+      if (res.status === 401) {
+        toast({
+          title: 'Authentication failed',
+          description: 'Please unlock admin access above',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error('Request failed');
+      }
+
       toast({ title: `${nct} mapping removed` });
     } catch {
       toast({ title: 'Failed to remove mapping', variant: 'destructive' });

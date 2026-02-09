@@ -43,7 +43,7 @@ export function WatchlistTab() {
     if (!ticker) return;
     setAdding(true);
     try {
-      await fetch('/api/admin/watchlist', {
+      const res = await fetch('/api/admin/watchlist', {
         method: 'POST',
         headers: adminHeaders(),
         body: JSON.stringify({
@@ -53,6 +53,21 @@ export function WatchlistTab() {
           poll_interval_hours: parseInt(interval, 10),
         }),
       });
+
+      if (res.status === 401) {
+        toast({
+          title: 'Authentication failed',
+          description: 'Please unlock admin access above',
+          variant: 'destructive'
+        });
+        setAdding(false);
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error('Request failed');
+      }
+
       toast({ title: `${ticker} added to watchlist` });
       setTicker('');
       setCik('');
@@ -65,10 +80,24 @@ export function WatchlistTab() {
 
   async function removeTicker(id: string, tickerName: string) {
     try {
-      await fetch(`/api/admin/watchlist?id=${id}`, {
+      const res = await fetch(`/api/admin/watchlist?id=${id}`, {
         method: 'DELETE',
         headers: adminHeaders(),
       });
+
+      if (res.status === 401) {
+        toast({
+          title: 'Authentication failed',
+          description: 'Please unlock admin access above',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error('Request failed');
+      }
+
       toast({ title: `${tickerName} removed` });
     } catch {
       toast({ title: 'Failed to remove ticker', variant: 'destructive' });
