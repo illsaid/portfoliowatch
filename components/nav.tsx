@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Shield, FileText, PauseCircle, EyeOff, Settings } from 'lucide-react';
+import { Shield, FileText, EyeOff, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const links = [
