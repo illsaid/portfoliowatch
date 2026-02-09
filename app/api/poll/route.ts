@@ -156,66 +156,73 @@ async function runPoll(req: NextRequest) {
         const newHash = computeStudyHash(study);
         const timeToCatalyst = computeTimeToCatalyst(study);
 
-        if (mapping.last_hash && mapping.last_hash !== newHash) {
-          const oldSnapshot = mapping.last_hash
-            ? await fetchStudy(mapping.nct_id)
-            : null;
+        if (mapping.last_hash && mapping.last_hash !== newHash && mapping.last_snapshot) {
+          const oldSnapshot = mapping.last_snapshot as Record<string, unknown>;
+          const diffs = diffStudy(oldSnapshot, study);
 
-          if (oldSnapshot) {
-            const diffs = diffStudy(oldSnapshot, study);
-            for (const diff of diffs) {
-              const marketMove = await market.getDailyMove(mapping.ticker, today);
-              const policyResult = evaluateDetection(
-                { source_tier: 'primary_registry', change_type: diff.changeType, llm_confidence: 1.0 },
-                policy,
-                { marketGap: marketMove, timeToCatalystDays: timeToCatalyst }
-              );
+          for (const diff of diffs) {
+            const marketMove = await market.getDailyMove(mapping.ticker, today);
+            const policyResult = evaluateDetection(
+              { source_tier: 'primary_registry', change_type: diff.changeType, llm_confidence: 1.0 },
+              policy,
+              { marketGap: marketMove, timeToCatalystDays: timeToCatalyst }
+            );
 
-              const scoreResult = computeScore(diff.changeType, 'primary_registry', {
-                dependency: depMap[mapping.ticker] ?? 0.6,
-                marketMove,
-                timeToCatalystDays: timeToCatalyst,
-              });
+            const scoreResult = computeScore(diff.changeType, 'primary_registry', {
+              dependency: depMap[mapping.ticker] ?? 0.6,
+              marketMove,
+              timeToCatalystDays: timeToCatalyst,
+            });
 
-              const detection: Partial<Detection> = {
-                ticker: mapping.ticker,
-                detected_at: new Date().toISOString(),
-                source_tier: 'primary_registry',
-                change_type: diff.changeType,
-                title: `CT.gov ${diff.description}: ${mapping.nct_id}`,
-                url: `https://clinicaltrials.gov/study/${mapping.nct_id}`,
-                nct_id: mapping.nct_id,
-                field_path: diff.fieldPath,
-                old_value: diff.oldValue,
-                new_value: diff.newValue,
-                llm_confidence: 1.0,
-                suppressed: policyResult.action === 'suppress',
-                quarantined: policyResult.action === 'quarantine',
-                hard_alert: policyResult.action === 'pause',
-                score_raw: scoreResult.scoreRaw,
-                score_final: scoreResult.scoreFinal,
-                policy_match_id: policyResult.ruleId,
-                policy_match_label: policyResult.ruleLabel,
-              };
+            const detection: Partial<Detection> = {
+              ticker: mapping.ticker,
+              detected_at: new Date().toISOString(),
+              detected_date: today,
+              source_tier: 'primary_registry',
+              change_type: diff.changeType,
+              title: `CT.gov ${diff.description}: ${mapping.nct_id}`,
+              url: `https://clinicaltrials.gov/study/${mapping.nct_id}`,
+              nct_id: mapping.nct_id,
+              field_path: diff.fieldPath,
+              old_value: diff.oldValue,
+              new_value: diff.newValue,
+              llm_confidence: 1.0,
+              suppressed: policyResult.action === 'suppress',
+              quarantined: policyResult.action === 'quarantine',
+              hard_alert: policyResult.action === 'pause',
+              score_raw: scoreResult.scoreRaw,
+              score_final: scoreResult.scoreFinal,
+              policy_match_id: policyResult.ruleId,
+              policy_match_label: policyResult.ruleLabel,
+            };
 
-              const { data: inserted } = await supabase
-                .from('detection')
-                .insert(detection)
-                .select('*');
+            const { data: inserted, error: insertErr } = await supabase
+              .from('detection')
+              .upsert(detection, {
+                onConflict: 'ticker,nct_id,field_path,detected_date',
+                ignoreDuplicates: true,
+              })
+              .select('*');
 
-              if (inserted && inserted.length > 0) {
-                newDetections++;
-                if (detection.suppressed) suppressedCount++;
-                if (detection.quarantined) quarantinedCount++;
-                allNewDetections.push(inserted[0] as Detection);
-              }
+            if (inserted && inserted.length > 0) {
+              newDetections++;
+              if (detection.suppressed) suppressedCount++;
+              if (detection.quarantined) quarantinedCount++;
+              allNewDetections.push(inserted[0] as Detection);
+            }
+            if (insertErr && !insertErr.message.includes('duplicate')) {
+              errors.push(`CT.gov insert ${mapping.nct_id}: ${insertErr.message}`);
             }
           }
         }
 
         await supabase
           .from('trial_mapping')
-          .update({ last_hash: newHash, last_fetched_at: new Date().toISOString() })
+          .update({
+            last_hash: newHash,
+            last_snapshot: study,
+            last_fetched_at: new Date().toISOString()
+          })
           .eq('id', mapping.id);
       } catch (err) {
         errors.push(`CT.gov ${mapping.nct_id}: ${(err as Error).message}`);

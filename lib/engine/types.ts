@@ -30,6 +30,7 @@ export interface Detection {
   id?: string;
   ticker: string;
   detected_at: string;
+  detected_date?: string;
   source_tier: SourceTier;
   change_type: ChangeType;
   title: string;
@@ -154,6 +155,7 @@ export interface TrialMapping {
   nct_id: string;
   label: string | null;
   last_hash: string | null;
+  last_snapshot?: Record<string, unknown> | null;
   last_fetched_at: string | null;
   created_at: string;
 }
