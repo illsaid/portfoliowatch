@@ -39,6 +39,18 @@ export default function PausePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const stored = localStorage.getItem('pause-cooldown-end');
+    if (stored) {
+      const endTime = parseInt(stored, 10);
+      if (endTime > Date.now()) {
+        setCooldownEnd(endTime);
+      } else {
+        localStorage.removeItem('pause-cooldown-end');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     async function load() {
       try {
         const stateRes = await fetch('/api/state');
@@ -55,10 +67,14 @@ export default function PausePage() {
 
         const wlRes = await fetch('/api/admin/watchlist');
         const wl = await wlRes.json();
-        if (wl.length > 0) {
+        const itemsWithCheckIn = wl.filter((item: CheckInData & { next_check_in_at: string | null }) => item.next_check_in_at !== null);
+        itemsWithCheckIn.sort((a: CheckInData & { next_check_in_at: string }, b: CheckInData & { next_check_in_at: string }) =>
+          new Date(a.next_check_in_at).getTime() - new Date(b.next_check_in_at).getTime()
+        );
+        if (itemsWithCheckIn.length > 0) {
           setCheckIn({
-            last_poll_at: wl[0].last_poll_at,
-            next_check_in_at: wl[0].next_check_in_at,
+            last_poll_at: itemsWithCheckIn[0].last_poll_at,
+            next_check_in_at: itemsWithCheckIn[0].next_check_in_at,
           });
         }
       } catch {
@@ -75,6 +91,7 @@ export default function PausePage() {
       const diff = cooldownEnd - Date.now();
       if (diff <= 0) {
         setRemaining('0:00');
+        localStorage.removeItem('pause-cooldown-end');
         clearInterval(interval);
         return;
       }
@@ -86,7 +103,9 @@ export default function PausePage() {
   }, [cooldownEnd]);
 
   const startCooldown = useCallback(() => {
-    setCooldownEnd(Date.now() + 20 * 60 * 1000);
+    const endTime = Date.now() + 20 * 60 * 1000;
+    setCooldownEnd(endTime);
+    localStorage.setItem('pause-cooldown-end', endTime.toString());
   }, []);
 
   if (loading) {
