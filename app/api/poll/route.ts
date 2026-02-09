@@ -82,7 +82,9 @@ async function runPoll(req: NextRequest) {
             const policyResult = evaluateDetection(
               { source_tier: 'primary_filing', change_type: changeType, llm_confidence: 1.0 },
               policy,
-              { marketGap: marketMove, timeToCatalystDays: 999 }
+              { marketGap: marketMove, timeToCatalystDays: 999 },
+              settings.SUPPRESSION_STRICTNESS as 'low' | 'med' | 'high',
+              settings.PANIC_SENSITIVITY
             );
 
             const scoreResult = computeScore(changeType, 'primary_filing', {
@@ -165,7 +167,9 @@ async function runPoll(req: NextRequest) {
             const policyResult = evaluateDetection(
               { source_tier: 'primary_registry', change_type: diff.changeType, llm_confidence: 1.0 },
               policy,
-              { marketGap: marketMove, timeToCatalystDays: timeToCatalyst }
+              { marketGap: marketMove, timeToCatalystDays: timeToCatalyst },
+              settings.SUPPRESSION_STRICTNESS as 'low' | 'med' | 'high',
+              settings.PANIC_SENSITIVITY
             );
 
             const scoreResult = computeScore(diff.changeType, 'primary_registry', {
@@ -270,21 +274,23 @@ async function runPoll(req: NextRequest) {
         { onConflict: 'date' }
       );
 
-    for (const d of detections.filter((d) => d.suppressed)) {
-      const move = await market.getDailyMove(d.ticker, today);
-      if (move != null && Math.abs(move) > 0.12) {
-        await supabase
-          .from('miss_log')
-          .upsert(
-            {
-              ticker: d.ticker,
-              detection_id: d.id,
-              date: today,
-              reason: 'suppressed-but-moved',
-              move_1d: move,
-            },
-            { onConflict: 'ticker,date', ignoreDuplicates: true }
-          );
+    if (settings.FEEDBACK_LOOP === 'on') {
+      for (const d of detections.filter((d) => d.suppressed)) {
+        const move = await market.getDailyMove(d.ticker, today);
+        if (move != null && Math.abs(move) > 0.12) {
+          await supabase
+            .from('miss_log')
+            .upsert(
+              {
+                ticker: d.ticker,
+                detection_id: d.id,
+                date: today,
+                reason: 'suppressed-but-moved',
+                move_1d: move,
+              },
+              { onConflict: 'ticker,date', ignoreDuplicates: true }
+            );
+        }
       }
     }
 

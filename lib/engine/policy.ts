@@ -11,9 +11,17 @@ export function parsePolicy(yamlText: string): ParsedPolicy {
 function matchesCondition(
   detection: Pick<Detection, 'source_tier' | 'change_type' | 'llm_confidence'>,
   condition: Record<string, unknown>,
-  ctx: PolicyContext
+  ctx: PolicyContext,
+  strictness: 'low' | 'med' | 'high',
+  panicThreshold: number
 ): boolean {
-  for (const [key, value] of Object.entries(condition)) {
+  const conditions = Object.entries(condition);
+
+  if (strictness === 'low' && conditions.length === 1) {
+    return false;
+  }
+
+  for (const [key, value] of conditions) {
     switch (key) {
       case 'source_tier':
         if (detection.source_tier !== value) return false;
@@ -44,29 +52,33 @@ function matchesCondition(
         break;
 
       case 'market_gap_lte':
-        if (ctx.marketGap == null || ctx.marketGap > (value as number)) return false;
+        const threshold = value === -0.20 ? panicThreshold / 100 : (value as number);
+        if (ctx.marketGap == null || ctx.marketGap > threshold) return false;
         break;
 
       default:
         break;
     }
   }
+
   return true;
 }
 
 export function evaluateDetection(
   detection: Pick<Detection, 'source_tier' | 'change_type' | 'llm_confidence'>,
   policy: ParsedPolicy,
-  ctx: PolicyContext
+  ctx: PolicyContext,
+  suppressionStrictness: 'low' | 'med' | 'high' = 'high',
+  panicSensitivity: number = -20
 ): PolicyEvalResult {
   for (const rule of policy.hard_alerts) {
-    if (matchesCondition(detection, rule.if, ctx)) {
+    if (matchesCondition(detection, rule.if, ctx, 'med', panicSensitivity)) {
       return { action: 'pause', ruleId: rule.id, ruleLabel: rule.label };
     }
   }
 
   for (const rule of policy.suppression) {
-    if (matchesCondition(detection, rule.if, ctx)) {
+    if (matchesCondition(detection, rule.if, ctx, suppressionStrictness, panicSensitivity)) {
       return {
         action: rule.action as 'suppress' | 'quarantine',
         ruleId: rule.id,
