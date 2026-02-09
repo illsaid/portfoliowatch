@@ -27,32 +27,23 @@ export class StubMarketProvider implements MarketProvider {
   }
 }
 
-interface AlphaVantageTimeSeriesDaily {
-  'Meta Data': {
-    '1. Information': string;
-    '2. Symbol': string;
-    '3. Last Refreshed': string;
-    '4. Output Size': string;
-    '5. Time Zone': string;
-  };
-  'Time Series (Daily)': {
-    [date: string]: {
-      '1. open': string;
-      '2. high': string;
-      '3. low': string;
-      '4. close': string;
-      '5. volume': string;
-    };
-  };
+interface FinnhubCandleResponse {
+  c: number[]; // Close prices
+  h: number[]; // High prices
+  l: number[]; // Low prices
+  o: number[]; // Open prices
+  s: string;   // Status
+  t: number[]; // Timestamps
+  v: number[]; // Volumes
 }
 
-export class AlphaVantageMarketProvider implements MarketProvider {
+export class FinnhubMarketProvider implements MarketProvider {
   private memoryCache: Map<string, number | null> = new Map();
   private apiKey: string;
   private supabase: ReturnType<typeof createClient<Database>>;
 
   constructor() {
-    this.apiKey = process.env.ALPHA_VANTAGE_API_KEY || '';
+    this.apiKey = process.env.FINNHUB_API_KEY || '';
 
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       throw new Error('Supabase credentials not configured');
@@ -64,7 +55,7 @@ export class AlphaVantageMarketProvider implements MarketProvider {
     );
 
     if (!this.apiKey) {
-      console.warn('ALPHA_VANTAGE_API_KEY not configured - market data will always return null');
+      console.warn('FINNHUB_API_KEY not configured - market data will always return null');
     }
   }
 
@@ -166,67 +157,60 @@ export class AlphaVantageMarketProvider implements MarketProvider {
   }
 
   private async fetchFromAPI(ticker: string, date: string): Promise<number | null> {
-    const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${ticker.toUpperCase()}&apikey=${this.apiKey}&outputsize=full`;
-
     try {
+      // Convert date string to Unix timestamp
+      const targetDate = new Date(date);
+      const targetTimestamp = Math.floor(targetDate.getTime() / 1000);
+
+      // Get data for a range that includes the target date and previous trading days
+      // Go back 7 days to ensure we capture the previous trading day
+      const fromTimestamp = targetTimestamp - (7 * 24 * 60 * 60);
+      const toTimestamp = targetTimestamp + (24 * 60 * 60);
+
+      const url = `https://finnhub.io/api/v1/stock/candle?symbol=${ticker.toUpperCase()}&resolution=D&from=${fromTimestamp}&to=${toTimestamp}&token=${this.apiKey}`;
+
       const response = await fetch(url);
 
       if (!response.ok) {
-        console.error(`Alpha Vantage API error: ${response.status} ${response.statusText}`);
+        console.error(`Finnhub API error: ${response.status} ${response.statusText}`);
         return null;
       }
 
-      const data: AlphaVantageTimeSeriesDaily = await response.json();
+      const data: FinnhubCandleResponse = await response.json();
 
-      // Check for API error messages
-      if ('Error Message' in data) {
-        console.error(`Alpha Vantage API error: ${(data as any)['Error Message']}`);
+      // Check if we got valid data
+      if (data.s !== 'ok' || !data.c || data.c.length === 0) {
+        console.error(`Finnhub API returned no data for ${ticker} on ${date}`);
         return null;
       }
 
-      // Check for rate limit
-      if ('Note' in data) {
-        console.warn(`Alpha Vantage API rate limit: ${(data as any)['Note']}`);
+      // Find the index for our target date
+      let targetIndex = -1;
+      for (let i = 0; i < data.t.length; i++) {
+        const candleDate = new Date(data.t[i] * 1000).toISOString().split('T')[0];
+        if (candleDate === date) {
+          targetIndex = i;
+          break;
+        }
+      }
+
+      if (targetIndex === -1) {
+        // Target date not found (weekend, holiday, or future date)
         return null;
       }
 
-      const timeSeries = data['Time Series (Daily)'];
-      if (!timeSeries) {
-        console.error('No time series data in Alpha Vantage response');
+      // Get current and previous close prices
+      const currentClose = data.c[targetIndex];
+
+      // Previous index should be the trading day before
+      if (targetIndex === 0) {
+        // No previous day data available
         return null;
       }
 
-      // Get data for the requested date
-      const dayData = timeSeries[date];
-      if (!dayData) {
-        // Date not found (weekend, holiday, or future date)
-        return null;
-      }
+      const prevClose = data.c[targetIndex - 1];
 
-      // Get previous trading day to calculate daily move
-      const dates = Object.keys(timeSeries).sort().reverse();
-      const dateIndex = dates.indexOf(date);
-
-      if (dateIndex === -1) {
-        return null;
-      }
-
-      // If this is the first date in the series, we can't calculate a move
-      if (dateIndex >= dates.length - 1) {
-        return null;
-      }
-
-      const prevDate = dates[dateIndex + 1];
-      const prevDayData = timeSeries[prevDate];
-
-      if (!prevDayData) {
-        return null;
-      }
-
-      const currentClose = parseFloat(dayData['4. close']);
-      const prevClose = parseFloat(prevDayData['4. close']);
-
-      if (isNaN(currentClose) || isNaN(prevClose) || prevClose === 0) {
+      if (!currentClose || !prevClose || prevClose === 0) {
         return null;
       }
 
@@ -235,16 +219,16 @@ export class AlphaVantageMarketProvider implements MarketProvider {
 
       // Save additional data to database
       await this.saveToDatabaseCache(ticker, date, dailyMove, {
-        open_price: parseFloat(dayData['1. open']),
+        open_price: data.o[targetIndex],
         close_price: currentClose,
-        high_price: parseFloat(dayData['2. high']),
-        low_price: parseFloat(dayData['3. low']),
-        volume: parseInt(dayData['5. volume']),
+        high_price: data.h[targetIndex],
+        low_price: data.l[targetIndex],
+        volume: data.v[targetIndex],
       });
 
       return dailyMove;
     } catch (error) {
-      console.error(`Exception fetching from Alpha Vantage API:`, error);
+      console.error(`Exception fetching from Finnhub API:`, error);
       return null;
     }
   }
@@ -253,8 +237,8 @@ export class AlphaVantageMarketProvider implements MarketProvider {
 export function getMarketProvider(): MarketProvider {
   const useRealProvider = process.env.USE_REAL_MARKET_PROVIDER !== 'false';
 
-  if (useRealProvider && process.env.ALPHA_VANTAGE_API_KEY) {
-    return new AlphaVantageMarketProvider();
+  if (useRealProvider && process.env.FINNHUB_API_KEY) {
+    return new FinnhubMarketProvider();
   }
 
   return new StubMarketProvider();
