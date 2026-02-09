@@ -2,6 +2,7 @@ import type { Detection, DailyState, DailyStateEnum, AdminSettings } from './typ
 
 export function computeDailyState(
   detections: Detection[],
+  dependencyMap: Record<string, number>,
   settings: AdminSettings,
   tickerCount: number,
   date: string
@@ -25,16 +26,7 @@ export function computeDailyState(
     state = 'Watch';
   }
 
-  let topDetection: Detection | null = null;
-  let topScore = -1;
-  for (const d of active) {
-    const weighted = d.score_final * (d as Detection & { _dependency?: number })._dependency!;
-    const effectiveScore = isNaN(weighted) ? d.score_final : weighted;
-    if (effectiveScore > topScore) {
-      topScore = effectiveScore;
-      topDetection = d;
-    }
-  }
+  const topDetection = selectTopDetection(detections, dependencyMap);
 
   const summaryMap: Record<DailyStateEnum, string> = {
     Contained: `Contained — no action needed for your ${tickerCount} holdings.`,

@@ -6,7 +6,7 @@ import { fetchStudy, computeStudyHash, diffStudy, computeTimeToCatalyst } from '
 import { getMarketProvider } from '@/lib/providers/market';
 import { parsePolicy, evaluateDetection } from '@/lib/engine/policy';
 import { computeScore } from '@/lib/engine/scoring';
-import { selectTopDetection } from '@/lib/engine/state-machine';
+import { selectTopDetection, computeDailyState } from '@/lib/engine/state-machine';
 import { shouldNotify, buildNotificationContent, sendNotification } from '@/lib/engine/notifications';
 import type { Detection, AdminSettings, DailyStateEnum } from '@/lib/engine/types';
 
@@ -240,39 +240,12 @@ async function runPoll(req: NextRequest) {
       .lt('detected_at', `${today}T23:59:59.999`);
 
     const detections = (todayDetections ?? []) as Detection[];
-    const active = detections.filter((d) => !d.suppressed && !d.quarantined);
-    const quietCount = detections.filter((d) => d.suppressed || d.quarantined).length;
 
-    const hasHardAlert = detections.some((d) => d.hard_alert);
-    const hasLook = active.some((d) => d.score_final >= settings.ALERT_THRESHOLD);
-    const hasWatch = active.some((d) => d.score_final >= 40 && d.score_final < settings.ALERT_THRESHOLD);
-
-    let state: DailyStateEnum = 'Contained';
-    if (hasHardAlert) state = 'Pause';
-    else if (hasLook) state = 'Look';
-    else if (hasWatch) state = 'Watch';
-
-    const topDetection = selectTopDetection(detections, depMap);
-
-    const summaryMap: Record<DailyStateEnum, string> = {
-      Contained: `Contained — no action needed for your ${items.length} holdings.`,
-      Watch: `Watch — one item worth monitoring across ${items.length} holdings.`,
-      Look: `Look — one item needs a 60-second review.`,
-      Pause: `Pause — something moved fast; open triage.`,
-    };
+    const dailyState = computeDailyState(detections, depMap, settings, items.length, today);
 
     await supabase
       .from('daily_state')
-      .upsert(
-        {
-          date: today,
-          state,
-          summary: summaryMap[state],
-          top_detection_id: topDetection?.id ?? null,
-          quiet_log_count: quietCount,
-        },
-        { onConflict: 'date' }
-      );
+      .upsert(dailyState, { onConflict: 'date' });
 
     if (settings.FEEDBACK_LOOP === 'on') {
       for (const d of detections.filter((d) => d.suppressed)) {
@@ -310,11 +283,9 @@ async function runPoll(req: NextRequest) {
 
     if (notifSettings) {
       const prevStateVal = (prevState?.state as DailyStateEnum) ?? null;
-      if (shouldNotify(state, prevStateVal, notifSettings)) {
-        const content = buildNotificationContent(
-          { date: today, state, summary: summaryMap[state], top_detection_id: topDetection?.id ?? null, quiet_log_count: quietCount },
-          topDetection
-        );
+      if (shouldNotify(dailyState.state, prevStateVal, notifSettings)) {
+        const topDetection = detections.find((d) => d.id === dailyState.top_detection_id) ?? null;
+        const content = buildNotificationContent(dailyState, topDetection);
         const sent = await sendNotification(
           notifSettings.channel as 'email' | 'pwa',
           notifSettings.email,
@@ -335,7 +306,7 @@ async function runPoll(req: NextRequest) {
       new_detections: newDetections,
       suppressed_count: suppressedCount,
       quarantined_count: quarantinedCount,
-      resulting_state: state,
+      resulting_state: dailyState.state,
       errors: errors.length > 0 ? errors : undefined,
     };
 
@@ -351,7 +322,7 @@ async function runPoll(req: NextRequest) {
           new_detections: newDetections,
           suppressed_count: suppressedCount,
           quarantined_count: quarantinedCount,
-          resulting_state: state,
+          resulting_state: dailyState.state,
         })
         .eq('id', pollRunId);
     }
