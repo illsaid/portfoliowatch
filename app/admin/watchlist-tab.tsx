@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Pencil, Check, X } from 'lucide-react';
 import { adminHeaders } from './admin-helpers';
 import { toast } from '@/hooks/use-toast';
 
@@ -28,6 +28,11 @@ export function WatchlistTab() {
   const [dep, setDep] = useState('0.6');
   const [interval, setInterval_] = useState('24');
   const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editCik, setEditCik] = useState('');
+  const [editDep, setEditDep] = useState('');
+  const [editInterval, setEditInterval] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const loadItems = useCallback(async () => {
     const res = await fetch('/api/admin/watchlist');
@@ -105,6 +110,56 @@ export function WatchlistTab() {
     loadItems();
   }
 
+  function startEdit(item: WatchlistItem) {
+    setEditingId(item.id);
+    setEditCik(item.cik || '');
+    setEditDep(item.dependency.toString());
+    setEditInterval(item.poll_interval_hours.toString());
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditCik('');
+    setEditDep('');
+    setEditInterval('');
+  }
+
+  async function saveEdit(id: string, ticker: string) {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/watchlist?id=${id}`, {
+        method: 'PATCH',
+        headers: adminHeaders(),
+        body: JSON.stringify({
+          cik: editCik || null,
+          dependency: parseFloat(editDep),
+          poll_interval_hours: parseInt(editInterval, 10),
+        }),
+      });
+
+      if (res.status === 401) {
+        toast({
+          title: 'Authentication failed',
+          description: 'Please unlock admin access above',
+          variant: 'destructive'
+        });
+        setSaving(false);
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error('Request failed');
+      }
+
+      toast({ title: `${ticker} updated` });
+      cancelEdit();
+      loadItems();
+    } catch {
+      toast({ title: 'Failed to update ticker', variant: 'destructive' });
+    }
+    setSaving(false);
+  }
+
   return (
     <Card className="border-neutral-200">
       <CardHeader>
@@ -169,40 +224,113 @@ export function WatchlistTab() {
                 <TableHead className="text-xs">Interval</TableHead>
                 <TableHead className="text-xs">Last Poll</TableHead>
                 <TableHead className="text-xs">Next Check</TableHead>
-                <TableHead className="w-10"></TableHead>
+                <TableHead className="w-20"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="text-xs font-medium">{item.ticker}</TableCell>
-                  <TableCell className="font-mono text-xs text-neutral-500">
-                    {item.cik || '\u2014'}
-                  </TableCell>
-                  <TableCell className="text-xs">{item.dependency}</TableCell>
-                  <TableCell className="text-xs">{item.poll_interval_hours}h</TableCell>
-                  <TableCell className="text-xs text-neutral-400">
-                    {item.last_poll_at
-                      ? new Date(item.last_poll_at).toLocaleString()
-                      : 'never'}
-                  </TableCell>
-                  <TableCell className="text-xs text-neutral-400">
-                    {item.next_check_in_at
-                      ? new Date(item.next_check_in_at).toLocaleString()
-                      : '\u2014'}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeTicker(item.id, item.ticker)}
-                      className="h-7 w-7 p-0"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-neutral-400" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {items.map((item) => {
+                const isEditing = editingId === item.id;
+                return (
+                  <TableRow key={item.id}>
+                    <TableCell className="text-xs font-medium">{item.ticker}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {isEditing ? (
+                        <Input
+                          value={editCik}
+                          onChange={(e) => setEditCik(e.target.value)}
+                          placeholder="CIK"
+                          className="h-7 text-xs"
+                        />
+                      ) : (
+                        <span className="text-neutral-500">{item.cik || '\u2014'}</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {isEditing ? (
+                        <Select value={editDep} onValueChange={setEditDep}>
+                          <SelectTrigger className="h-7 w-20 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0.3">0.3</SelectItem>
+                            <SelectItem value="0.6">0.6</SelectItem>
+                            <SelectItem value="1.0">1.0</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        item.dependency
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {isEditing ? (
+                        <Input
+                          type="number"
+                          value={editInterval}
+                          onChange={(e) => setEditInterval(e.target.value)}
+                          className="h-7 w-16 text-xs"
+                        />
+                      ) : (
+                        `${item.poll_interval_hours}h`
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-neutral-400">
+                      {item.last_poll_at
+                        ? new Date(item.last_poll_at).toLocaleString()
+                        : 'never'}
+                    </TableCell>
+                    <TableCell className="text-xs text-neutral-400">
+                      {item.next_check_in_at
+                        ? new Date(item.next_check_in_at).toLocaleString()
+                        : '\u2014'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        {isEditing ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => saveEdit(item.id, item.ticker)}
+                              disabled={saving}
+                              className="h-7 w-7 p-0"
+                            >
+                              <Check className="h-3.5 w-3.5 text-green-600" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={cancelEdit}
+                              disabled={saving}
+                              className="h-7 w-7 p-0"
+                            >
+                              <X className="h-3.5 w-3.5 text-neutral-400" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => startEdit(item)}
+                              className="h-7 w-7 p-0"
+                            >
+                              <Pencil className="h-3.5 w-3.5 text-neutral-400" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeTicker(item.id, item.ticker)}
+                              className="h-7 w-7 p-0"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-neutral-400" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {items.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-xs text-neutral-400">
