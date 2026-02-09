@@ -7,7 +7,7 @@ import { getMarketProvider } from '@/lib/providers/market';
 import { parsePolicy, evaluateDetection } from '@/lib/engine/policy';
 import { computeScore } from '@/lib/engine/scoring';
 import { selectTopDetection, computeDailyState } from '@/lib/engine/state-machine';
-import { shouldNotify, buildNotificationContent, sendNotification } from '@/lib/engine/notifications';
+import { shouldNotify, shouldNotifyQuietLog, buildNotificationContent, buildQuietLogNotificationContent, sendNotification } from '@/lib/engine/notifications';
 import type { Detection, AdminSettings, DailyStateEnum } from '@/lib/engine/types';
 
 function todayStr(): string {
@@ -283,6 +283,8 @@ async function runPoll(req: NextRequest) {
 
     if (notifSettings) {
       const prevStateVal = (prevState?.state as DailyStateEnum) ?? null;
+      let notificationSent = false;
+
       if (shouldNotify(dailyState.state, prevStateVal, notifSettings)) {
         const topDetection = detections.find((d) => d.id === dailyState.top_detection_id) ?? null;
         const content = buildNotificationContent(dailyState, topDetection);
@@ -293,11 +295,28 @@ async function runPoll(req: NextRequest) {
           content.body
         );
         if (sent) {
-          await supabase
-            .from('notification_settings')
-            .update({ last_sent_at: new Date().toISOString() })
-            .eq('user_id', 'default');
+          notificationSent = true;
         }
+      }
+
+      if (!notificationSent && shouldNotifyQuietLog(dailyState.quiet_log_count, notifSettings)) {
+        const content = buildQuietLogNotificationContent(dailyState.quiet_log_count, today);
+        const sent = await sendNotification(
+          notifSettings.channel as 'email' | 'pwa',
+          notifSettings.email,
+          content.subject,
+          content.body
+        );
+        if (sent) {
+          notificationSent = true;
+        }
+      }
+
+      if (notificationSent) {
+        await supabase
+          .from('notification_settings')
+          .update({ last_sent_at: new Date().toISOString() })
+          .eq('user_id', 'default');
       }
     }
 

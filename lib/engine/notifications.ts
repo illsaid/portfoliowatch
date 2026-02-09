@@ -34,6 +34,24 @@ export function shouldNotify(
   return true;
 }
 
+export function shouldNotifyQuietLog(
+  quietLogCount: number,
+  settings: NotificationSettings,
+  threshold = 3
+): boolean {
+  if (settings.channel === 'none') return false;
+  if (!settings.quiet_push_enabled) return false;
+  if (quietLogCount <= threshold) return false;
+
+  if (settings.last_sent_at) {
+    const lastSent = new Date(settings.last_sent_at);
+    const hoursSince = (Date.now() - lastSent.getTime()) / (1000 * 60 * 60);
+    if (hoursSince < 24) return false;
+  }
+
+  return true;
+}
+
 export function buildNotificationContent(
   dailyState: DailyState,
   topDetection: Detection | null
@@ -50,6 +68,15 @@ export function buildNotificationContent(
     }
   }
 
+  return { subject, body };
+}
+
+export function buildQuietLogNotificationContent(
+  quietLogCount: number,
+  date: string
+): { subject: string; body: string } {
+  const subject = `Portfolio Watchman: Quiet Log Alert`;
+  const body = `${quietLogCount} items were automatically suppressed or quarantined on ${date}. Review the quiet log to ensure no important signals were missed.`;
   return { subject, body };
 }
 
