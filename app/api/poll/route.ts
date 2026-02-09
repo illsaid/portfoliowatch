@@ -29,15 +29,42 @@ async function loadSettings(supabase: ReturnType<typeof createServerClient>): Pr
 }
 
 async function runPoll(req: NextRequest) {
-  const supabase = createServerClient();
-  const today = todayStr();
-  const market = getMarketProvider();
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return NextResponse.json(
+      { error: 'Supabase configuration missing. Please check environment variables.' },
+      { status: 500 }
+    );
+  }
 
-  const { data: pollRun } = await supabase
+  let supabase: ReturnType<typeof createServerClient>;
+  let market: ReturnType<typeof getMarketProvider>;
+  const today = todayStr();
+
+  try {
+    supabase = createServerClient();
+    market = getMarketProvider();
+  } catch (err) {
+    console.error('Failed to initialize providers:', err);
+    return NextResponse.json(
+      { error: `Failed to initialize providers: ${(err as Error).message}` },
+      { status: 500 }
+    );
+  }
+
+  const { data: pollRun, error: pollRunError } = await supabase
     .from('poll_run')
     .insert({ status: 'running' })
     .select('id')
     .single();
+
+  if (pollRunError) {
+    console.error('Failed to create poll run:', pollRunError);
+    return NextResponse.json(
+      { error: `Failed to initialize poll: ${pollRunError.message}` },
+      { status: 500 }
+    );
+  }
+
   const pollRunId = pollRun?.id;
 
   let tickersPolled = 0;
@@ -364,13 +391,29 @@ async function runPoll(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const authErr = verifyAdmin(req);
-  if (authErr) return authErr;
-  return runPoll(req);
+  try {
+    const authErr = verifyAdmin(req);
+    if (authErr) return authErr;
+    return await runPoll(req);
+  } catch (err) {
+    console.error('Poll POST error:', err);
+    return NextResponse.json(
+      { error: `Poll failed: ${(err as Error).message}` },
+      { status: 500 }
+    );
+  }
 }
 
 export async function GET(req: NextRequest) {
-  const authErr = verifyAdmin(req);
-  if (authErr) return authErr;
-  return runPoll(req);
+  try {
+    const authErr = verifyAdmin(req);
+    if (authErr) return authErr;
+    return await runPoll(req);
+  } catch (err) {
+    console.error('Poll GET error:', err);
+    return NextResponse.json(
+      { error: `Poll failed: ${(err as Error).message}` },
+      { status: 500 }
+    );
+  }
 }
