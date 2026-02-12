@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { verifyAdmin } from '@/lib/auth';
 import yaml from 'js-yaml';
 import { getOrgIdFromEnv } from '@/lib/tenancy';
@@ -51,8 +52,8 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: `Invalid YAML: ${(e as Error).message}` }, { status: 400 });
   }
 
-  const supabase = createServerClient();
-  const { data: existing } = await supabase
+  const readClient = createServerClient();
+  const { data: existing } = await readClient
     .from('policy')
     .select('id')
     .eq('org_id', orgId)
@@ -60,15 +61,16 @@ export async function PUT(req: NextRequest) {
     .limit(1)
     .maybeSingle();
 
+  const writeClient = createServiceClient();
   if (existing) {
-    const { error } = await supabase
+    const { error } = await writeClient
       .from('policy')
       .update({ yaml_text, updated_at: new Date().toISOString() })
       .eq('org_id', orgId)
       .eq('id', existing.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   } else {
-    const { error } = await supabase
+    const { error } = await writeClient
       .from('policy')
       .insert({ org_id: orgId, name: 'default', yaml_text, is_active: true });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

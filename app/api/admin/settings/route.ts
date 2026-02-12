@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { verifyAdmin } from '@/lib/auth';
 import { getOrgIdFromEnv } from '@/lib/tenancy';
 
@@ -30,7 +31,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: 'key and value required' }, { status: 400 });
   }
 
-  const supabase = createServerClient();
+  const supabase = createServiceClient();
   const { error } = await supabase
     .from('admin_settings')
     .update({ value: String(value), updated_at: new Date().toISOString() })

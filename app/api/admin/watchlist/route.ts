@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { verifyAdmin } from '@/lib/auth';
 import { getOrgIdFromEnv } from '@/lib/tenancy';
 
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'ticker required' }, { status: 400 });
   }
 
-  const supabase = createServerClient();
+  const supabase = createServiceClient();
   const { data, error } = await supabase
     .from('watchlist_item')
     .insert({
@@ -70,7 +71,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   }
 
-  const supabase = createServerClient();
+  const supabase = createServiceClient();
   const { data, error } = await supabase
     .from('watchlist_item')
     .update(updates)
@@ -94,7 +95,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'id required' }, { status: 400 });
   }
 
-  const supabase = createServerClient();
+  const supabase = createServiceClient();
   const { error } = await supabase.from('watchlist_item').delete().eq('org_id', orgId).eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

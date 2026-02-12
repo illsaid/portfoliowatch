@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { verifyAdmin } from '@/lib/auth';
 import { getOrgIdFromEnv } from '@/lib/tenancy';
 
@@ -28,7 +29,7 @@ export async function PUT(req: NextRequest) {
   const body = await req.json();
   const { channel, email, daily_push_enabled, pause_push_enabled, quiet_push_enabled } = body;
 
-  const supabase = createServerClient();
+  const supabase = createServiceClient();
   const { error } = await supabase
     .from('notification_settings')
     .update({

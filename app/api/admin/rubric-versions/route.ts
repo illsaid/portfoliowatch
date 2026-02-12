@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { verifyAdmin } from '@/lib/auth';
 import { getOrgIdFromEnv } from '@/lib/tenancy';
 
@@ -31,9 +32,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'version_name required' }, { status: 400 });
   }
 
-  const supabase = createServerClient();
+  const readClient = createServerClient();
 
-  const { data: existing } = await supabase
+  const { data: existing } = await readClient
     .from('rubric_versions')
     .select('id')
     .eq('org_id', orgId)
@@ -44,7 +45,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Version name already exists' }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  const writeClient = createServiceClient();
+  const { data, error } = await writeClient
     .from('rubric_versions')
     .insert({
       org_id: orgId,
@@ -75,7 +77,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'id required' }, { status: 400 });
   }
 
-  const supabase = createServerClient();
+  const supabase = createServiceClient();
 
   if (action === 'activate') {
     const { error: deactivateError } = await supabase

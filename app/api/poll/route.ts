@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, getActiveRubricVersion } from '@/lib/supabase/server';
+import { getActiveRubricVersion } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { verifyAdmin } from '@/lib/auth';
 import { fetchEdgarSubmissions, detectNewFilings, buildEdgarUrl } from '@/lib/providers/edgar';
 import { fetchStudy, computeStudyHash, diffStudy, computeTimeToCatalyst } from '@/lib/providers/ctgov';
@@ -19,7 +20,7 @@ function todayStr(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-async function loadSettings(supabase: ReturnType<typeof createServerClient>, orgId: string): Promise<AdminSettings> {
+async function loadSettings(supabase: ReturnType<typeof createServiceClient>, orgId: string): Promise<AdminSettings> {
   const { data } = await supabase.from('admin_settings').select('key, value').eq('org_id', orgId);
   const map: Record<string, string> = {};
   for (const row of data ?? []) {
@@ -42,12 +43,12 @@ async function runPoll(req: NextRequest) {
   }
 
   const orgId = getOrgIdFromEnv();
-  let supabase: ReturnType<typeof createServerClient>;
+  let supabase: ReturnType<typeof createServiceClient>;
   let market: ReturnType<typeof getMarketProvider>;
   const today = todayStr();
 
   try {
-    supabase = createServerClient();
+    supabase = createServiceClient();
     market = getMarketProvider();
   } catch (err) {
     console.error('Failed to initialize providers:', err);
