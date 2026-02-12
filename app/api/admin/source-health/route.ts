@@ -1,8 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { verifyAdmin } from '@/lib/auth';
 import { getOrgIdFromEnv } from '@/lib/tenancy';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const authErr = verifyAdmin(req);
+  if (authErr) return authErr;
+
   const orgId = getOrgIdFromEnv();
   const supabase = createServerClient();
 
