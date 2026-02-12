@@ -1,5 +1,6 @@
 import { generateJSON, getDefaultProvider, getDefaultModel, type LLMProvider } from './provider';
 import type { Detection } from '@/lib/engine/types';
+import { createHash } from 'crypto';
 
 export const PROMPT_VERSION = 'trial_interp_v1';
 
@@ -169,13 +170,7 @@ export function computeInputHash(
   provider: string,
   model: string
 ): string {
-  const payload = JSON.stringify({ pack, provider, model, version: PROMPT_VERSION });
-  let hash = 0;
-  for (let i = 0; i < payload.length; i++) {
-    const char = payload.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  const hex = Math.abs(hash).toString(16).padStart(8, '0');
-  return `${PROMPT_VERSION}_${hex}`;
+  const payload = JSON.stringify(pack) + provider + model + PROMPT_VERSION;
+  const hash = createHash('sha256').update(payload).digest('hex');
+  return hash;
 }
