@@ -9,6 +9,8 @@ import { TrialsTab } from './trials-tab';
 import { NotificationsTab } from './notifications-tab';
 import { PollRunsTab } from './poll-runs-tab';
 import { DiagnosticsTab } from './diagnostics-tab';
+import { RubricVersionsTab } from './rubric-versions-tab';
+import { SourceHealthTab } from './source-health-tab';
 import { AdminAuthPanel } from './admin-auth-panel';
 
 export default function AdminPage() {
@@ -25,10 +27,12 @@ export default function AdminPage() {
         <TabsList className="flex flex-wrap">
           <TabsTrigger value="thermostats" className="text-xs">Controls</TabsTrigger>
           <TabsTrigger value="policy" className="text-xs">Policy</TabsTrigger>
+          <TabsTrigger value="rubric" className="text-xs">Rubric</TabsTrigger>
           <TabsTrigger value="watchlist" className="text-xs">Watchlist</TabsTrigger>
           <TabsTrigger value="trials" className="text-xs">Trials</TabsTrigger>
           <TabsTrigger value="notifications" className="text-xs">Notify</TabsTrigger>
           <TabsTrigger value="pollruns" className="text-xs">Poll Runs</TabsTrigger>
+          <TabsTrigger value="sourcehealth" className="text-xs">Sources</TabsTrigger>
           <TabsTrigger value="diagnostics" className="text-xs">Diagnostics</TabsTrigger>
         </TabsList>
 
@@ -37,6 +41,9 @@ export default function AdminPage() {
         </TabsContent>
         <TabsContent value="policy">
           <PolicyTab />
+        </TabsContent>
+        <TabsContent value="rubric">
+          <RubricVersionsTab />
         </TabsContent>
         <TabsContent value="watchlist">
           <WatchlistTab />
@@ -49,6 +56,9 @@ export default function AdminPage() {
         </TabsContent>
         <TabsContent value="pollruns">
           <PollRunsTab />
+        </TabsContent>
+        <TabsContent value="sourcehealth">
+          <SourceHealthTab />
         </TabsContent>
         <TabsContent value="diagnostics">
           <DiagnosticsTab />
