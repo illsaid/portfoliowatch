@@ -4,8 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { PolicyTag } from '@/components/policy-tag';
 import { DiffDisplay } from '@/components/diff-display';
 import { LLMInterpDisplay, LLMInterpBadge } from '@/components/llm-interp-display';
+import { CardShell } from '@/components/card-shell';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { EyeOff, ShieldAlert, ExternalLink } from 'lucide-react';
+import { EyeOff, ShieldAlert, ExternalLink, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import type { LLMInterpretation } from '@/lib/engine/types';
 
@@ -57,9 +58,17 @@ export default async function QuietPage() {
 
         <TabsContent value="suppressed" className="space-y-3">
           {suppressedList.length === 0 ? (
-            <p className="py-8 text-center text-sm text-neutral-400">
-              No suppressed detections in the last 7 days.
-            </p>
+            <CardShell className="py-12 text-center">
+              <div className="flex justify-center mb-3">
+                <div className="h-10 w-10 rounded-full bg-teal-50 flex items-center justify-center">
+                  <Sparkles className="h-5 w-5 text-teal-600" />
+                </div>
+              </div>
+              <p className="text-sm font-medium text-neutral-700">Quiet log is empty</p>
+              <p className="text-xs text-neutral-500 mt-1">
+                No detections were suppressed in the last 7 days. That&apos;s the point.
+              </p>
+            </CardShell>
           ) : (
             suppressedList.map((d) => (
               <DetectionRow key={d.id} detection={d} />
@@ -69,9 +78,17 @@ export default async function QuietPage() {
 
         <TabsContent value="quarantined" className="space-y-3">
           {quarantinedList.length === 0 ? (
-            <p className="py-8 text-center text-sm text-neutral-400">
-              No quarantined detections in the last 7 days.
-            </p>
+            <CardShell className="py-12 text-center">
+              <div className="flex justify-center mb-3">
+                <div className="h-10 w-10 rounded-full bg-neutral-100 flex items-center justify-center">
+                  <ShieldAlert className="h-5 w-5 text-neutral-500" />
+                </div>
+              </div>
+              <p className="text-sm font-medium text-neutral-700">No quarantined items</p>
+              <p className="text-xs text-neutral-500 mt-1">
+                Quarantine holds detections that need manual review before surfacing.
+              </p>
+            </CardShell>
           ) : (
             quarantinedList.map((d) => (
               <DetectionRow key={d.id} detection={d} type="quarantined" />

@@ -5,8 +5,9 @@ import { StateBadge } from '@/components/state-badge';
 import { PolicyTag } from '@/components/policy-tag';
 import { DiffDisplay } from '@/components/diff-display';
 import { LLMInterpDisplay, LLMInterpBadge } from '@/components/llm-interp-display';
+import { EmptyState } from '@/components/empty-state';
 import type { DailyStateEnum, LLMInterpretation } from '@/lib/engine/types';
-import { FileText, ExternalLink, Target, TrendingUp } from 'lucide-react';
+import { FileText, ExternalLink, Target, TrendingUp, CheckCircle, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -25,18 +26,14 @@ export default async function BriefPage() {
 
   if (state === 'Contained' || !dailyState?.top_detection_id) {
     return (
-      <div className="flex min-h-[40vh] flex-col items-center justify-center text-center">
-        <StateBadge state="Contained" size="lg" />
-        <p className="mt-4 text-sm text-neutral-500">
-          No brief needed today. All holdings are contained.
-        </p>
-        <Link
-          href="/"
-          className="mt-4 text-xs font-medium text-teal-600 hover:text-teal-700"
-        >
-          &larr; Back to dashboard
-        </Link>
-      </div>
+      <EmptyState
+        icon={CheckCircle}
+        title="All clear today"
+        description="No brief needed — your holdings are contained with no high-signal changes detected. Check back after the next poll run."
+        actionLabel="Back to Dashboard"
+        actionHref="/"
+        hint="Briefs are generated when the state escalates above Contained."
+      />
     );
   }
 
@@ -48,9 +45,13 @@ export default async function BriefPage() {
 
   if (!detection) {
     return (
-      <div className="text-center text-sm text-neutral-500">
-        Detection not found.
-      </div>
+      <EmptyState
+        icon={AlertCircle}
+        title="Detection not found"
+        description="The referenced detection could not be loaded. It may have been removed or there was a data issue."
+        actionLabel="Back to Dashboard"
+        actionHref="/"
+      />
     );
   }
 

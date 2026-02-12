@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Shield, FileText, EyeOff, Settings } from 'lucide-react';
+import { Shield, FileText, EyeOff, Settings, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const links = [
   { href: '/', label: 'Home', icon: Shield },
   { href: '/brief', label: 'Brief', icon: FileText },
   { href: '/quiet', label: 'Quiet Log', icon: EyeOff },
+  { href: '/how-it-works', label: 'How it works', icon: HelpCircle },
   { href: '/admin', label: 'Admin', icon: Settings },
 ];
 
