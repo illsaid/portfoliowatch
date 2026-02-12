@@ -490,6 +490,7 @@ async function runPoll(req: NextRequest) {
     }
 
     const summary = {
+      org_id: orgId,
       tickers_polled: tickersPolled,
       new_detections: newDetections,
       suppressed_count: suppressedCount,
