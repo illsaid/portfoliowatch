@@ -49,6 +49,10 @@ export interface Detection {
   score_final: number;
   policy_match_id?: string | null;
   policy_match_label?: string | null;
+  rubric_version_id?: string | null;
+  llm_interp?: Record<string, unknown> | null;
+  llm_model?: string | null;
+  llm_generated_at?: string | null;
   created_at?: string;
 }
 
@@ -146,6 +150,7 @@ export interface PollRunRecord {
   suppressed_count: number;
   quarantined_count: number;
   resulting_state?: string | null;
+  rubric_version_id?: string | null;
   created_at?: string;
 }
 
@@ -178,4 +183,56 @@ export interface CtgovDiff {
   oldValue: string;
   newValue: string;
   description: string;
+}
+
+export interface RubricWeights {
+  base_score_weights?: Record<string, number>;
+  tier_multipliers?: Record<string, number>;
+  dependency_exponent?: number;
+  market_move_multiplier?: number;
+  catalyst_proximity_boost?: number;
+}
+
+export interface RubricVersion {
+  id: string;
+  version_name: string;
+  effective_at: string;
+  weights_json: RubricWeights;
+  threshold_alert: number;
+  panic_sensitivity: number;
+  suppression_strictness: string;
+  reason?: string | null;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SourceCursor {
+  source: string;
+  cursor_json: Record<string, unknown>;
+  last_run_at?: string | null;
+  last_ok_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface RawDoc {
+  id: string;
+  source: string;
+  external_id: string;
+  content_hash: string;
+  payload_json: Record<string, unknown>;
+  fetched_at: string;
+}
+
+export interface SourceHealth {
+  id: string;
+  source: string;
+  run_date: string;
+  fetched_count: number;
+  emitted_detections: number;
+  errors_count: number;
+  lag_seconds_p95?: number | null;
+  notes?: string | null;
+  created_at?: string;
 }
