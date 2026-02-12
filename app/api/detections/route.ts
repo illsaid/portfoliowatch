@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { getOrgIdFromEnv } from '@/lib/tenancy';
 
 export async function GET(req: NextRequest) {
+  const orgId = getOrgIdFromEnv();
   const { searchParams } = new URL(req.url);
   const date = searchParams.get('date');
   const suppressed = searchParams.get('suppressed');
@@ -14,6 +16,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from('detection')
     .select('*')
+    .eq('org_id', orgId)
     .order('detected_at', { ascending: false })
     .limit(limit);
 

@@ -13,13 +13,14 @@ import type { Detection, AdminSettings, DailyStateEnum } from '@/lib/engine/type
 import { isLLMConfigured, getDefaultProvider, getDefaultModel } from '@/lib/llm/provider';
 import { interpretTrial, buildEvidencePack, computeInputHash, buildFallbackInterpretation, PROMPT_VERSION } from '@/lib/llm/trialInterp';
 import { filterCandidates, getMaxLLMCallsPerRun } from '@/lib/llm/shouldInterpret';
+import { getOrgIdFromEnv } from '@/lib/tenancy';
 
 function todayStr(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-async function loadSettings(supabase: ReturnType<typeof createServerClient>): Promise<AdminSettings> {
-  const { data } = await supabase.from('admin_settings').select('key, value');
+async function loadSettings(supabase: ReturnType<typeof createServerClient>, orgId: string): Promise<AdminSettings> {
+  const { data } = await supabase.from('admin_settings').select('key, value').eq('org_id', orgId);
   const map: Record<string, string> = {};
   for (const row of data ?? []) {
     map[row.key] = row.value;
@@ -40,6 +41,7 @@ async function runPoll(req: NextRequest) {
     );
   }
 
+  const orgId = getOrgIdFromEnv();
   let supabase: ReturnType<typeof createServerClient>;
   let market: ReturnType<typeof getMarketProvider>;
   const today = todayStr();
@@ -55,12 +57,12 @@ async function runPoll(req: NextRequest) {
     );
   }
 
-  const rubricVersion = await getActiveRubricVersion(supabase);
+  const rubricVersion = await getActiveRubricVersion(supabase, orgId);
   const rubricVersionId = rubricVersion?.id ?? null;
 
   const { data: pollRun, error: pollRunError } = await supabase
     .from('poll_run')
-    .insert({ status: 'running', rubric_version_id: rubricVersionId })
+    .insert({ org_id: orgId, status: 'running', rubric_version_id: rubricVersionId })
     .select('id')
     .single();
 
@@ -81,13 +83,14 @@ async function runPoll(req: NextRequest) {
   const errors: string[] = [];
 
   try {
-    const { data: watchlist } = await supabase.from('watchlist_item').select('*');
+    const { data: watchlist } = await supabase.from('watchlist_item').select('*').eq('org_id', orgId);
     const items = watchlist ?? [];
-    const settings = await loadSettings(supabase);
+    const settings = await loadSettings(supabase, orgId);
 
     const { data: policyRows } = await supabase
       .from('policy')
       .select('yaml_text')
+      .eq('org_id', orgId)
       .eq('is_active', true)
       .limit(1);
     const policyYaml = policyRows?.[0]?.yaml_text ?? '';
@@ -111,12 +114,13 @@ async function runPoll(req: NextRequest) {
             const edgarHash = computeJsonHash(filings);
             await supabase.from('raw_docs').upsert(
               {
+                org_id: orgId,
                 source: 'edgar',
                 external_id: item.cik,
                 content_hash: edgarHash,
                 payload_json: filings,
               },
-              { onConflict: 'source,external_id,content_hash', ignoreDuplicates: true }
+              { onConflict: 'org_id,source,external_id,content_hash', ignoreDuplicates: true }
             );
           } catch (rawDocErr) {
             errors.push(`raw_docs EDGAR ${item.cik}: ${(rawDocErr as Error).message}`);
@@ -144,6 +148,7 @@ async function runPoll(req: NextRequest) {
             });
 
             const detection: Partial<Detection> = {
+              org_id: orgId,
               ticker: item.ticker,
               detected_at: new Date().toISOString(),
               source_tier: 'primary_filing',
@@ -165,7 +170,7 @@ async function runPoll(req: NextRequest) {
 
             const { data: inserted, error: insertErr } = await supabase
               .from('detection')
-              .upsert(detection, { onConflict: 'ticker,accession', ignoreDuplicates: true })
+              .upsert(detection, { onConflict: 'org_id,ticker,accession', ignoreDuplicates: true })
               .select('*');
 
             if (inserted && inserted.length > 0) {
@@ -183,6 +188,7 @@ async function runPoll(req: NextRequest) {
             await supabase
               .from('watchlist_item')
               .update({ last_filing_accession: newFilings[0].accessionNumber })
+              .eq('org_id', orgId)
               .eq('id', item.id);
           }
         } catch (err) {
@@ -197,10 +203,11 @@ async function runPoll(req: NextRequest) {
           next_check_in_at: new Date(Date.now() + item.poll_interval_hours * 3600 * 1000).toISOString(),
           updated_at: new Date().toISOString(),
         })
+        .eq('org_id', orgId)
         .eq('id', item.id);
     }
 
-    const { data: trialMappings } = await supabase.from('trial_mapping').select('*');
+    const { data: trialMappings } = await supabase.from('trial_mapping').select('*').eq('org_id', orgId);
     for (const mapping of trialMappings ?? []) {
       try {
         const study = await fetchStudy(mapping.nct_id);
@@ -211,12 +218,13 @@ async function runPoll(req: NextRequest) {
         try {
           await supabase.from('raw_docs').upsert(
             {
+              org_id: orgId,
               source: 'ctgov',
               external_id: mapping.nct_id,
               content_hash: newHash,
               payload_json: study,
             },
-            { onConflict: 'source,external_id,content_hash', ignoreDuplicates: true }
+            { onConflict: 'org_id,source,external_id,content_hash', ignoreDuplicates: true }
           );
         } catch (rawDocErr) {
           errors.push(`raw_docs CT.gov ${mapping.nct_id}: ${(rawDocErr as Error).message}`);
@@ -245,6 +253,7 @@ async function runPoll(req: NextRequest) {
             });
 
             const detection: Partial<Detection> = {
+              org_id: orgId,
               ticker: mapping.ticker,
               detected_at: new Date().toISOString(),
               detected_date: today,
@@ -270,7 +279,7 @@ async function runPoll(req: NextRequest) {
             const { data: inserted, error: insertErr } = await supabase
               .from('detection')
               .upsert(detection, {
-                onConflict: 'ticker,nct_id,field_path,detected_date',
+                onConflict: 'org_id,ticker,nct_id,field_path,detected_date',
                 ignoreDuplicates: true,
               })
               .select('*');
@@ -294,6 +303,7 @@ async function runPoll(req: NextRequest) {
             last_snapshot: study,
             last_fetched_at: new Date().toISOString()
           })
+          .eq('org_id', orgId)
           .eq('id', mapping.id);
       } catch (err) {
         errors.push(`CT.gov ${mapping.nct_id}: ${(err as Error).message}`);
@@ -303,6 +313,7 @@ async function runPoll(req: NextRequest) {
     const { data: todayDetections } = await supabase
       .from('detection')
       .select('*')
+      .eq('org_id', orgId)
       .gte('detected_at', `${today}T00:00:00`)
       .lt('detected_at', `${today}T23:59:59.999`);
 
@@ -312,7 +323,7 @@ async function runPoll(req: NextRequest) {
 
     await supabase
       .from('daily_state')
-      .upsert(dailyState, { onConflict: 'date' });
+      .upsert({ ...dailyState, org_id: orgId }, { onConflict: 'org_id,date' });
 
     if (settings.FEEDBACK_LOOP === 'on') {
       for (const d of detections.filter((d) => d.suppressed)) {
@@ -322,13 +333,14 @@ async function runPoll(req: NextRequest) {
             .from('miss_log')
             .upsert(
               {
+                org_id: orgId,
                 ticker: d.ticker,
                 detection_id: d.id,
                 date: today,
                 reason: 'suppressed-but-moved',
                 move_1d: move,
               },
-              { onConflict: 'ticker,date', ignoreDuplicates: true }
+              { onConflict: 'org_id,ticker,date', ignoreDuplicates: true }
             );
         }
       }
@@ -356,6 +368,7 @@ async function runPoll(req: NextRequest) {
             const { data: cached } = await supabase
               .from('llm_cache')
               .select('*')
+              .eq('org_id', orgId)
               .eq('provider', provider)
               .eq('model', model)
               .eq('prompt_version', PROMPT_VERSION)
@@ -375,6 +388,7 @@ async function runPoll(req: NextRequest) {
 
               await supabase.from('llm_cache').upsert(
                 {
+                  org_id: orgId,
                   provider,
                   model,
                   prompt_version: PROMPT_VERSION,
@@ -382,7 +396,7 @@ async function runPoll(req: NextRequest) {
                   output_json: interpretation,
                   confidence,
                 },
-                { onConflict: 'provider,model,prompt_version,input_hash', ignoreDuplicates: true }
+                { onConflict: 'org_id,provider,model,prompt_version,input_hash', ignoreDuplicates: true }
               );
             }
 
@@ -395,6 +409,7 @@ async function runPoll(req: NextRequest) {
                 llm_model: `${provider}/${model}`,
                 llm_generated_at: new Date().toISOString(),
               })
+              .eq('org_id', orgId)
               .eq('id', detection.id);
 
             llmInterpCount++;
@@ -408,6 +423,7 @@ async function runPoll(req: NextRequest) {
                 llm_model: 'fallback',
                 llm_generated_at: new Date().toISOString(),
               })
+              .eq('org_id', orgId)
               .eq('id', detection.id);
             errors.push(`LLM interp ${detection.nct_id}: ${(llmErr as Error).message}`);
           }
@@ -420,6 +436,7 @@ async function runPoll(req: NextRequest) {
     const { data: prevState } = await supabase
       .from('daily_state')
       .select('state')
+      .eq('org_id', orgId)
       .lt('date', today)
       .order('date', { ascending: false })
       .limit(1)
@@ -428,6 +445,7 @@ async function runPoll(req: NextRequest) {
     const { data: notifSettings } = await supabase
       .from('notification_settings')
       .select('*')
+      .eq('org_id', orgId)
       .eq('user_id', 'default')
       .maybeSingle();
 
@@ -466,6 +484,7 @@ async function runPoll(req: NextRequest) {
         await supabase
           .from('notification_settings')
           .update({ last_sent_at: new Date().toISOString() })
+          .eq('org_id', orgId)
           .eq('user_id', 'default');
       }
     }
@@ -494,6 +513,7 @@ async function runPoll(req: NextRequest) {
           quarantined_count: quarantinedCount,
           resulting_state: dailyState.state,
         })
+        .eq('org_id', orgId)
         .eq('id', pollRunId);
     }
 
@@ -508,6 +528,7 @@ async function runPoll(req: NextRequest) {
           status: 'error',
           error_json: { error: errMsg },
         })
+        .eq('org_id', orgId)
         .eq('id', pollRunId);
     }
     return NextResponse.json({ error: errMsg }, { status: 500 });

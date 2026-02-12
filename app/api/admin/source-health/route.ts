@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { getOrgIdFromEnv } from '@/lib/tenancy';
 
 export async function GET() {
+  const orgId = getOrgIdFromEnv();
   const supabase = createServerClient();
 
   const sevenDaysAgo = new Date();
@@ -11,6 +13,7 @@ export async function GET() {
   const { data: healthData, error: healthError } = await supabase
     .from('source_health')
     .select('*')
+    .eq('org_id', orgId)
     .gte('run_date', dateStr)
     .order('run_date', { ascending: false })
     .order('source', { ascending: true });
@@ -21,7 +24,8 @@ export async function GET() {
 
   const { data: cursorData, error: cursorError } = await supabase
     .from('source_cursor')
-    .select('*');
+    .select('*')
+    .eq('org_id', orgId);
 
   if (cursorError) {
     return NextResponse.json({ error: cursorError.message }, { status: 500 });

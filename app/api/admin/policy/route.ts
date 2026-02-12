@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { verifyAdmin } from '@/lib/auth';
 import yaml from 'js-yaml';
+import { getOrgIdFromEnv } from '@/lib/tenancy';
 
 export async function GET() {
+  const orgId = getOrgIdFromEnv();
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from('policy')
     .select('*')
+    .eq('org_id', orgId)
     .eq('is_active', true)
     .limit(1)
     .maybeSingle();
@@ -20,6 +23,7 @@ export async function PUT(req: NextRequest) {
   const authErr = verifyAdmin(req);
   if (authErr) return authErr;
 
+  const orgId = getOrgIdFromEnv();
   const body = await req.json();
   const { yaml_text } = body;
   if (!yaml_text) {
@@ -48,6 +52,7 @@ export async function PUT(req: NextRequest) {
   const { data: existing } = await supabase
     .from('policy')
     .select('id')
+    .eq('org_id', orgId)
     .eq('is_active', true)
     .limit(1)
     .maybeSingle();
@@ -56,12 +61,13 @@ export async function PUT(req: NextRequest) {
     const { error } = await supabase
       .from('policy')
       .update({ yaml_text, updated_at: new Date().toISOString() })
+      .eq('org_id', orgId)
       .eq('id', existing.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   } else {
     const { error } = await supabase
       .from('policy')
-      .insert({ name: 'default', yaml_text, is_active: true });
+      .insert({ org_id: orgId, name: 'default', yaml_text, is_active: true });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

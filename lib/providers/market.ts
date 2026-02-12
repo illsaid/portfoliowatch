@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types';
+import { getOrgIdFromEnv } from '../tenancy';
 
 export interface MarketProvider {
   getDailyMove(ticker: string, date: string): Promise<number | null>;
@@ -99,9 +100,11 @@ export class FinnhubMarketProvider implements MarketProvider {
 
   private async checkDatabaseCache(ticker: string, date: string): Promise<number | null | undefined> {
     try {
+      const orgId = getOrgIdFromEnv();
       const { data, error } = await (this.supabase as any)
         .from('market_data')
         .select('daily_move')
+        .eq('org_id', orgId)
         .eq('ticker', ticker.toUpperCase())
         .eq('date', date)
         .maybeSingle();
@@ -136,16 +139,18 @@ export class FinnhubMarketProvider implements MarketProvider {
     }
   ): Promise<void> {
     try {
+      const orgId = getOrgIdFromEnv();
       const { error } = await (this.supabase as any)
         .from('market_data')
         .upsert({
+          org_id: orgId,
           ticker: ticker.toUpperCase(),
           date,
           daily_move: dailyMove,
           ...additionalData,
           fetched_at: new Date().toISOString(),
         }, {
-          onConflict: 'ticker,date'
+          onConflict: 'org_id,ticker,date'
         });
 
       if (error) {

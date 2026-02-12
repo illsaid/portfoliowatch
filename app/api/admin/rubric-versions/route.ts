@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { verifyAdmin } from '@/lib/auth';
+import { getOrgIdFromEnv } from '@/lib/tenancy';
 
 export async function GET() {
+  const orgId = getOrgIdFromEnv();
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from('rubric_versions')
     .select('*')
+    .eq('org_id', orgId)
     .order('effective_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -17,6 +20,7 @@ export async function POST(req: NextRequest) {
   const authErr = verifyAdmin(req);
   if (authErr) return authErr;
 
+  const orgId = getOrgIdFromEnv();
   const body = await req.json();
   const { version_name, weights_json, threshold_alert, panic_sensitivity, suppression_strictness, reason } = body;
 
@@ -29,6 +33,7 @@ export async function POST(req: NextRequest) {
   const { data: existing } = await supabase
     .from('rubric_versions')
     .select('id')
+    .eq('org_id', orgId)
     .eq('version_name', version_name)
     .maybeSingle();
 
@@ -39,6 +44,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase
     .from('rubric_versions')
     .insert({
+      org_id: orgId,
       version_name,
       weights_json: weights_json ?? {},
       threshold_alert: threshold_alert ?? 60,
@@ -58,6 +64,7 @@ export async function PATCH(req: NextRequest) {
   const authErr = verifyAdmin(req);
   if (authErr) return authErr;
 
+  const orgId = getOrgIdFromEnv();
   const body = await req.json();
   const { id, action } = body;
 
@@ -71,6 +78,7 @@ export async function PATCH(req: NextRequest) {
     const { error: deactivateError } = await supabase
       .from('rubric_versions')
       .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('org_id', orgId)
       .neq('id', id);
 
     if (deactivateError) {
@@ -84,6 +92,7 @@ export async function PATCH(req: NextRequest) {
         effective_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
+      .eq('org_id', orgId)
       .eq('id', id);
 
     if (activateError) {

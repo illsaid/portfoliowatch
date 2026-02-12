@@ -11,11 +11,13 @@ export function createServerClient() {
 const DEFAULT_RUBRIC_VERSION_NAME = 'v1';
 
 export async function getActiveRubricVersion(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  orgId: string
 ): Promise<RubricVersion | null> {
   const { data: activeVersion } = await supabase
     .from('rubric_versions')
     .select('*')
+    .eq('org_id', orgId)
     .eq('is_active', true)
     .order('effective_at', { ascending: false })
     .limit(1)
@@ -28,6 +30,7 @@ export async function getActiveRubricVersion(
   const { data: fallback } = await supabase
     .from('rubric_versions')
     .select('*')
+    .eq('org_id', orgId)
     .eq('version_name', DEFAULT_RUBRIC_VERSION_NAME)
     .maybeSingle();
 

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { verifyAdmin } from '@/lib/auth';
+import { getOrgIdFromEnv } from '@/lib/tenancy';
 
 export async function GET() {
+  const orgId = getOrgIdFromEnv();
   const supabase = createServerClient();
-  const { data, error } = await supabase.from('admin_settings').select('*');
+  const { data, error } = await supabase.from('admin_settings').select('*').eq('org_id', orgId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const settings: Record<string, string> = {};
@@ -18,6 +20,7 @@ export async function PUT(req: NextRequest) {
   const authErr = verifyAdmin(req);
   if (authErr) return authErr;
 
+  const orgId = getOrgIdFromEnv();
   const body = await req.json();
   const { key, value } = body;
   if (!key || value === undefined) {
@@ -28,6 +31,7 @@ export async function PUT(req: NextRequest) {
   const { error } = await supabase
     .from('admin_settings')
     .update({ value: String(value), updated_at: new Date().toISOString() })
+    .eq('org_id', orgId)
     .eq('key', key);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

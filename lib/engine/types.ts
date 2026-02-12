@@ -28,6 +28,7 @@ export type DailyStateEnum = (typeof DAILY_STATES)[number];
 
 export interface Detection {
   id?: string;
+  org_id?: string;
   ticker: string;
   detected_at: string;
   detected_date?: string;
@@ -59,6 +60,7 @@ export interface Detection {
 
 export interface WatchlistItem {
   id: string;
+  org_id: string;
   user_id: string;
   ticker: string;
   cik: string | null;
@@ -73,6 +75,7 @@ export interface WatchlistItem {
 
 export interface DailyState {
   id?: string;
+  org_id?: string;
   date: string;
   state: DailyStateEnum;
   summary: string;
@@ -83,6 +86,7 @@ export interface DailyState {
 
 export interface MissLog {
   id?: string;
+  org_id?: string;
   ticker: string;
   detection_id: string | null;
   date: string;
@@ -141,6 +145,7 @@ export interface PolicyContext {
 
 export interface PollRunRecord {
   id?: string;
+  org_id?: string;
   started_at?: string;
   finished_at?: string | null;
   status: 'running' | 'ok' | 'error';
@@ -157,6 +162,7 @@ export interface PollRunRecord {
 
 export interface TrialMapping {
   id: string;
+  org_id: string;
   ticker: string;
   nct_id: string;
   label: string | null;
@@ -168,6 +174,7 @@ export interface TrialMapping {
 
 export interface NotificationSettings {
   id: string;
+  org_id: string;
   user_id: string;
   channel: 'none' | 'email' | 'pwa';
   email: string | null;
@@ -196,6 +203,7 @@ export interface RubricWeights {
 
 export interface RubricVersion {
   id: string;
+  org_id: string;
   version_name: string;
   effective_at: string;
   weights_json: RubricWeights;
@@ -209,6 +217,8 @@ export interface RubricVersion {
 }
 
 export interface SourceCursor {
+  id?: string;
+  org_id?: string;
   source: string;
   cursor_json: Record<string, unknown>;
   last_run_at?: string | null;
@@ -219,6 +229,7 @@ export interface SourceCursor {
 
 export interface RawDoc {
   id: string;
+  org_id: string;
   source: string;
   external_id: string;
   content_hash: string;
@@ -228,6 +239,7 @@ export interface RawDoc {
 
 export interface SourceHealth {
   id: string;
+  org_id: string;
   source: string;
   run_date: string;
   fetched_count: number;
