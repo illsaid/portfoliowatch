@@ -4,7 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/state-badge';
 import { PolicyTag } from '@/components/policy-tag';
 import { DiffDisplay } from '@/components/diff-display';
-import type { DailyStateEnum } from '@/lib/engine/types';
+import { LLMInterpDisplay, LLMInterpBadge } from '@/components/llm-interp-display';
+import type { DailyStateEnum, LLMInterpretation } from '@/lib/engine/types';
 import { FileText, ExternalLink, Target, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 
@@ -65,11 +66,14 @@ export default async function BriefPage() {
 
       <Card className="border-neutral-200">
         <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="outline">{detection.ticker}</Badge>
             <Badge variant="secondary" className="text-xs">
               {sourceLabel}
             </Badge>
+            {detection.llm_interp && (
+              <LLMInterpBadge confidence={detection.llm_confidence} />
+            )}
             <Badge variant="secondary" className="ml-auto text-xs">
               Score: {detection.score_final}
             </Badge>
@@ -96,6 +100,14 @@ export default async function BriefPage() {
                       fieldPath={detection.field_path}
                       oldValue={detection.old_value}
                       newValue={detection.new_value}
+                    />
+                  </div>
+                )}
+                {detection.llm_interp && (
+                  <div className="mt-3">
+                    <LLMInterpDisplay
+                      interp={detection.llm_interp as unknown as LLMInterpretation}
+                      confidence={detection.llm_confidence}
                     />
                   </div>
                 )}

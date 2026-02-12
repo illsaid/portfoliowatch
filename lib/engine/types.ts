@@ -50,6 +50,7 @@ export interface Detection {
   policy_match_id?: string | null;
   policy_match_label?: string | null;
   rubric_version_id?: string | null;
+  llm_input_hash?: string | null;
   llm_interp?: Record<string, unknown> | null;
   llm_model?: string | null;
   llm_generated_at?: string | null;
@@ -235,4 +236,13 @@ export interface SourceHealth {
   lag_seconds_p95?: number | null;
   notes?: string | null;
   created_at?: string;
+}
+
+export interface LLMInterpretation {
+  why_it_matters: string[];
+  benign_explanation: string;
+  bear_case: string;
+  next_checks: string[];
+  noise_flag: 'low' | 'medium' | 'high';
+  confidence: number;
 }

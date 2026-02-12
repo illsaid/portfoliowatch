@@ -10,6 +10,9 @@ import { selectTopDetection, computeDailyState } from '@/lib/engine/state-machin
 import { shouldNotify, shouldNotifyQuietLog, buildNotificationContent, buildQuietLogNotificationContent, sendNotification } from '@/lib/engine/notifications';
 import { computeJsonHash } from '@/lib/utils';
 import type { Detection, AdminSettings, DailyStateEnum } from '@/lib/engine/types';
+import { isLLMConfigured, getDefaultProvider, getDefaultModel } from '@/lib/llm/provider';
+import { interpretTrial, buildEvidencePack, computeInputHash, buildFallbackInterpretation, PROMPT_VERSION } from '@/lib/llm/trialInterp';
+import { filterCandidates, getMaxLLMCallsPerRun } from '@/lib/llm/shouldInterpret';
 
 function todayStr(): string {
   return new Date().toISOString().split('T')[0];
@@ -331,6 +334,89 @@ async function runPoll(req: NextRequest) {
       }
     }
 
+    let llmInterpCount = 0;
+    if (isLLMConfigured()) {
+      try {
+        const ctgovDetections = detections.filter(
+          (d) => d.source_tier === 'primary_registry' && d.nct_id && !d.llm_interp
+        );
+
+        const tickerCallCounts: Record<string, number> = {};
+        const maxPerRun = getMaxLLMCallsPerRun();
+        const candidates = filterCandidates(ctgovDetections, tickerCallCounts, maxPerRun);
+
+        const provider = getDefaultProvider();
+        const model = getDefaultModel(provider);
+
+        for (const detection of candidates) {
+          try {
+            const pack = buildEvidencePack(detection as Detection);
+            const inputHash = computeInputHash(pack, provider, model);
+
+            const { data: cached } = await supabase
+              .from('llm_cache')
+              .select('*')
+              .eq('provider', provider)
+              .eq('model', model)
+              .eq('prompt_version', PROMPT_VERSION)
+              .eq('input_hash', inputHash)
+              .maybeSingle();
+
+            let interpretation: Record<string, unknown>;
+            let confidence: number;
+
+            if (cached) {
+              interpretation = cached.output_json as Record<string, unknown>;
+              confidence = (cached.confidence as number) ?? 0.5;
+            } else {
+              const result = await interpretTrial(detection as Detection);
+              interpretation = result.interpretation as unknown as Record<string, unknown>;
+              confidence = result.interpretation.confidence;
+
+              await supabase.from('llm_cache').upsert(
+                {
+                  provider,
+                  model,
+                  prompt_version: PROMPT_VERSION,
+                  input_hash: inputHash,
+                  output_json: interpretation,
+                  confidence,
+                },
+                { onConflict: 'provider,model,prompt_version,input_hash', ignoreDuplicates: true }
+              );
+            }
+
+            await supabase
+              .from('detection')
+              .update({
+                llm_input_hash: inputHash,
+                llm_interp: interpretation,
+                llm_confidence: confidence,
+                llm_model: `${provider}/${model}`,
+                llm_generated_at: new Date().toISOString(),
+              })
+              .eq('id', detection.id);
+
+            llmInterpCount++;
+          } catch (llmErr) {
+            const fallback = buildFallbackInterpretation(detection.field_path ?? 'unknown');
+            await supabase
+              .from('detection')
+              .update({
+                llm_interp: fallback as unknown as Record<string, unknown>,
+                llm_confidence: fallback.confidence,
+                llm_model: 'fallback',
+                llm_generated_at: new Date().toISOString(),
+              })
+              .eq('id', detection.id);
+            errors.push(`LLM interp ${detection.nct_id}: ${(llmErr as Error).message}`);
+          }
+        }
+      } catch (llmPassErr) {
+        errors.push(`LLM pass error: ${(llmPassErr as Error).message}`);
+      }
+    }
+
     const { data: prevState } = await supabase
       .from('daily_state')
       .select('state')
@@ -389,6 +475,7 @@ async function runPoll(req: NextRequest) {
       new_detections: newDetections,
       suppressed_count: suppressedCount,
       quarantined_count: quarantinedCount,
+      llm_interp_count: llmInterpCount,
       resulting_state: dailyState.state,
       errors: errors.length > 0 ? errors : undefined,
     };

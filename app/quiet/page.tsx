@@ -1,11 +1,13 @@
 import { createServerClient } from '@/lib/supabase/server';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { PolicyTag } from '@/components/policy-tag';
 import { DiffDisplay } from '@/components/diff-display';
+import { LLMInterpDisplay, LLMInterpBadge } from '@/components/llm-interp-display';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EyeOff, ShieldAlert, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
+import type { LLMInterpretation } from '@/lib/engine/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,6 +106,8 @@ interface DetectionRowData {
   policy_match_label: string | null;
   detected_at: string;
   url: string | null;
+  llm_interp?: Record<string, unknown> | null;
+  llm_confidence?: number | null;
 }
 
 function DetectionRow({
@@ -128,6 +132,9 @@ function DetectionRow({
               <span className="text-sm font-medium text-neutral-700">
                 {d.title}
               </span>
+              {d.llm_interp && (
+                <LLMInterpBadge confidence={d.llm_confidence} />
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -159,6 +166,14 @@ function DetectionRow({
                 newValue={d.new_value}
               />
             ) : null}
+
+            {d.llm_interp && (
+              <LLMInterpDisplay
+                interp={d.llm_interp as unknown as LLMInterpretation}
+                confidence={d.llm_confidence}
+                compact
+              />
+            )}
 
             <div className="flex items-center gap-3 text-xs text-neutral-400">
               <span>{new Date(d.detected_at).toLocaleString()}</span>
