@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, getActiveRubricVersion } from '@/lib/supabase/server';
 import { verifyAdmin } from '@/lib/auth';
 import { fetchEdgarSubmissions, detectNewFilings, buildEdgarUrl } from '@/lib/providers/edgar';
 import { fetchStudy, computeStudyHash, diffStudy, computeTimeToCatalyst } from '@/lib/providers/ctgov';
@@ -51,9 +51,12 @@ async function runPoll(req: NextRequest) {
     );
   }
 
+  const rubricVersion = await getActiveRubricVersion(supabase);
+  const rubricVersionId = rubricVersion?.id ?? null;
+
   const { data: pollRun, error: pollRunError } = await supabase
     .from('poll_run')
-    .insert({ status: 'running' })
+    .insert({ status: 'running', rubric_version_id: rubricVersionId })
     .select('id')
     .single();
 
@@ -137,6 +140,7 @@ async function runPoll(req: NextRequest) {
               policy_match_id: policyResult.ruleId,
               policy_match_label: policyResult.ruleLabel,
               raw_payload: filing as unknown as Record<string, unknown>,
+              rubric_version_id: rubricVersionId,
             };
 
             const { data: inserted, error: insertErr } = await supabase
@@ -225,6 +229,7 @@ async function runPoll(req: NextRequest) {
               score_final: scoreResult.scoreFinal,
               policy_match_id: policyResult.ruleId,
               policy_match_label: policyResult.ruleLabel,
+              rubric_version_id: rubricVersionId,
             };
 
             const { data: inserted, error: insertErr } = await supabase
