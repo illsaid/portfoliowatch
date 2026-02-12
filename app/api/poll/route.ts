@@ -8,6 +8,7 @@ import { parsePolicy, evaluateDetection } from '@/lib/engine/policy';
 import { computeScore } from '@/lib/engine/scoring';
 import { selectTopDetection, computeDailyState } from '@/lib/engine/state-machine';
 import { shouldNotify, shouldNotifyQuietLog, buildNotificationContent, buildQuietLogNotificationContent, sendNotification } from '@/lib/engine/notifications';
+import { computeJsonHash } from '@/lib/utils';
 import type { Detection, AdminSettings, DailyStateEnum } from '@/lib/engine/types';
 
 function todayStr(): string {
@@ -102,6 +103,22 @@ async function runPoll(req: NextRequest) {
       if (item.cik) {
         try {
           const filings = await fetchEdgarSubmissions(item.cik);
+
+          try {
+            const edgarHash = computeJsonHash(filings);
+            await supabase.from('raw_docs').upsert(
+              {
+                source: 'edgar',
+                external_id: item.cik,
+                content_hash: edgarHash,
+                payload_json: filings,
+              },
+              { onConflict: 'source,external_id,content_hash', ignoreDuplicates: true }
+            );
+          } catch (rawDocErr) {
+            errors.push(`raw_docs EDGAR ${item.cik}: ${(rawDocErr as Error).message}`);
+          }
+
           const newFilings = detectNewFilings(filings, item.last_filing_accession);
 
           for (const filing of newFilings) {
@@ -187,6 +204,21 @@ async function runPoll(req: NextRequest) {
         if (!study) continue;
 
         const newHash = computeStudyHash(study);
+
+        try {
+          await supabase.from('raw_docs').upsert(
+            {
+              source: 'ctgov',
+              external_id: mapping.nct_id,
+              content_hash: newHash,
+              payload_json: study,
+            },
+            { onConflict: 'source,external_id,content_hash', ignoreDuplicates: true }
+          );
+        } catch (rawDocErr) {
+          errors.push(`raw_docs CT.gov ${mapping.nct_id}: ${(rawDocErr as Error).message}`);
+        }
+
         const timeToCatalyst = computeTimeToCatalyst(study);
 
         if (mapping.last_hash && mapping.last_hash !== newHash && mapping.last_snapshot) {
