@@ -20,6 +20,15 @@ function todayStr(): string {
   return new Date().toISOString().split('T')[0];
 }
 
+function sanitizeErrorMessage(message: string): string {
+  let sanitized = message;
+  sanitized = sanitized.replace(/Bearer\s+[A-Za-z0-9_\-\.]+/gi, 'Bearer [REDACTED]');
+  sanitized = sanitized.replace(/api[_-]?key["\s:=]+[A-Za-z0-9_\-\.]+/gi, 'api_key=[REDACTED]');
+  sanitized = sanitized.replace(/token["\s:=]+[A-Za-z0-9_\-\.]+/gi, 'token=[REDACTED]');
+  sanitized = sanitized.replace(/password["\s:=]+[^\s"']+/gi, 'password=[REDACTED]');
+  return sanitized;
+}
+
 async function loadSettings(supabase: ReturnType<typeof createServiceClient>, orgId: string): Promise<AdminSettings> {
   const { data } = await supabase.from('admin_settings').select('key, value').eq('org_id', orgId);
   const map: Record<string, string> = {};
@@ -82,6 +91,27 @@ async function runPoll(req: NextRequest) {
   let suppressedCount = 0;
   let quarantinedCount = 0;
   const errors: string[] = [];
+  const diagnostics: {
+    edgar_errors: number;
+    ctgov_errors: number;
+    llm_errors: number;
+    raw_docs_errors: number;
+    provider_status: {
+      llm_configured: boolean;
+      market_provider: string;
+    };
+    error_samples: string[];
+  } = {
+    edgar_errors: 0,
+    ctgov_errors: 0,
+    llm_errors: 0,
+    raw_docs_errors: 0,
+    provider_status: {
+      llm_configured: isLLMConfigured(),
+      market_provider: process.env.FINNHUB_API_KEY ? 'finnhub' : 'stub',
+    },
+    error_samples: [],
+  };
 
   try {
     const { data: watchlist } = await supabase.from('watchlist_item').select('*').eq('org_id', orgId);
@@ -124,7 +154,12 @@ async function runPoll(req: NextRequest) {
               { onConflict: 'org_id,source,external_id,content_hash', ignoreDuplicates: true }
             );
           } catch (rawDocErr) {
-            errors.push(`raw_docs EDGAR ${item.cik}: ${(rawDocErr as Error).message}`);
+            const errMsg = `raw_docs EDGAR ${item.cik}: ${(rawDocErr as Error).message}`;
+            errors.push(errMsg);
+            diagnostics.raw_docs_errors++;
+            if (diagnostics.error_samples.length < 5) {
+              diagnostics.error_samples.push(sanitizeErrorMessage(errMsg));
+            }
           }
 
           const newFilings = detectNewFilings(filings, item.last_filing_accession);
@@ -181,7 +216,12 @@ async function runPoll(req: NextRequest) {
               allNewDetections.push(inserted[0] as Detection);
             }
             if (insertErr && !insertErr.message.includes('duplicate')) {
-              errors.push(`EDGAR insert ${item.ticker}: ${insertErr.message}`);
+              const errMsg = `EDGAR insert ${item.ticker}: ${insertErr.message}`;
+              errors.push(errMsg);
+              diagnostics.edgar_errors++;
+              if (diagnostics.error_samples.length < 5) {
+                diagnostics.error_samples.push(sanitizeErrorMessage(errMsg));
+              }
             }
           }
 
@@ -193,7 +233,12 @@ async function runPoll(req: NextRequest) {
               .eq('id', item.id);
           }
         } catch (err) {
-          errors.push(`EDGAR ${item.ticker}: ${(err as Error).message}`);
+          const errMsg = `EDGAR ${item.ticker}: ${(err as Error).message}`;
+          errors.push(errMsg);
+          diagnostics.edgar_errors++;
+          if (diagnostics.error_samples.length < 5) {
+            diagnostics.error_samples.push(sanitizeErrorMessage(errMsg));
+          }
         }
       }
 
@@ -228,7 +273,12 @@ async function runPoll(req: NextRequest) {
             { onConflict: 'org_id,source,external_id,content_hash', ignoreDuplicates: true }
           );
         } catch (rawDocErr) {
-          errors.push(`raw_docs CT.gov ${mapping.nct_id}: ${(rawDocErr as Error).message}`);
+          const errMsg = `raw_docs CT.gov ${mapping.nct_id}: ${(rawDocErr as Error).message}`;
+          errors.push(errMsg);
+          diagnostics.raw_docs_errors++;
+          if (diagnostics.error_samples.length < 5) {
+            diagnostics.error_samples.push(sanitizeErrorMessage(errMsg));
+          }
         }
 
         const timeToCatalyst = computeTimeToCatalyst(study);
@@ -292,7 +342,12 @@ async function runPoll(req: NextRequest) {
               allNewDetections.push(inserted[0] as Detection);
             }
             if (insertErr && !insertErr.message.includes('duplicate')) {
-              errors.push(`CT.gov insert ${mapping.nct_id}: ${insertErr.message}`);
+              const errMsg = `CT.gov insert ${mapping.nct_id}: ${insertErr.message}`;
+              errors.push(errMsg);
+              diagnostics.ctgov_errors++;
+              if (diagnostics.error_samples.length < 5) {
+                diagnostics.error_samples.push(sanitizeErrorMessage(errMsg));
+              }
             }
           }
         }
@@ -307,7 +362,12 @@ async function runPoll(req: NextRequest) {
           .eq('org_id', orgId)
           .eq('id', mapping.id);
       } catch (err) {
-        errors.push(`CT.gov ${mapping.nct_id}: ${(err as Error).message}`);
+        const errMsg = `CT.gov ${mapping.nct_id}: ${(err as Error).message}`;
+        errors.push(errMsg);
+        diagnostics.ctgov_errors++;
+        if (diagnostics.error_samples.length < 5) {
+          diagnostics.error_samples.push(sanitizeErrorMessage(errMsg));
+        }
       }
     }
 
@@ -426,11 +486,21 @@ async function runPoll(req: NextRequest) {
               })
               .eq('org_id', orgId)
               .eq('id', detection.id);
-            errors.push(`LLM interp ${detection.nct_id}: ${(llmErr as Error).message}`);
+            const errMsg = `LLM interp ${detection.nct_id}: ${(llmErr as Error).message}`;
+            errors.push(errMsg);
+            diagnostics.llm_errors++;
+            if (diagnostics.error_samples.length < 5) {
+              diagnostics.error_samples.push(sanitizeErrorMessage(errMsg));
+            }
           }
         }
       } catch (llmPassErr) {
-        errors.push(`LLM pass error: ${(llmPassErr as Error).message}`);
+        const errMsg = `LLM pass error: ${(llmPassErr as Error).message}`;
+        errors.push(errMsg);
+        diagnostics.llm_errors++;
+        if (diagnostics.error_samples.length < 5) {
+          diagnostics.error_samples.push(sanitizeErrorMessage(errMsg));
+        }
       }
     }
 
@@ -509,6 +579,7 @@ async function runPoll(req: NextRequest) {
           status: errors.length > 0 ? 'error' : 'ok',
           summary_json: summary,
           error_json: errors.length > 0 ? { errors } : null,
+          diagnostics_json: diagnostics,
           tickers_polled: tickersPolled,
           new_detections: newDetections,
           suppressed_count: suppressedCount,
@@ -528,7 +599,11 @@ async function runPoll(req: NextRequest) {
         .update({
           finished_at: new Date().toISOString(),
           status: 'error',
-          error_json: { error: errMsg },
+          error_json: { error: sanitizeErrorMessage(errMsg) },
+          diagnostics_json: {
+            ...diagnostics,
+            critical_error: sanitizeErrorMessage(errMsg),
+          },
         })
         .eq('org_id', orgId)
         .eq('id', pollRunId);
